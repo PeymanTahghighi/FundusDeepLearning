@@ -1,86 +1,140 @@
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report
+from Models import *
+import tensorflow as tf
 import Config
-import numpy as np
 import pickle
-import os
-from keras.utils import to_categorical
-from keras.models import Sequential
-from keras.layers.core import Dense
-from keras.optimizers import SGD
 
-def loadDataSplit(splitPath):
-    data = [];
-    labels = [];
+placeholders = {
+    'imageInput' : tf.placeholder(tf.float32, shape=(224, 224, 3)),
+    'labels': tf.placeholder(dtype=tf.float32, shape=(Config.NETWORK_SIZE * Config.NETWORK_SIZE, 1)),
+    'features': tf.placeholder(tf.float32, shape=(None, 2)),
+}
 
-    for row in open(splitPath):
-        row = row.strip().split(",");
-        label = row[0];
-        features = np.array(row[1:],dtype = "float");
+sess = tf.Session();
+sess.run(tf.global_variables_initializer());
 
-        data.append(features);
-        labels.append(label);
+# Build graph adjacency matrix
+indices = [];
+values = [];
+for i in range(Config.NETWORK_SIZE * Config.NETWORK_SIZE):
+    # self loop
+    indices.append([i,i]);
+    values.append(1.0);
 
-    data = np.array(data);
-    labels = np.array(labels);
+    # Left edge vertices
+    if i % Config.NETWORK_SIZE == 0:
+        indices.append([i,i + 1]);
+        values.append(1.0);
+        if i - 1 > 0:
+            indices.append([i,i - Config.NETWORK_SIZE]);
+            values.append(1.0);
+            # Top right
+            indices.append([i,i - Config.NETWORK_SIZE + 1]);
+            values.append(1.0);
+        if i + 1 < Config.NETWORK_SIZE:
+            indices.append([i,i + Config.NETWORK_SIZE]);
+            values.append(1.0);
+            # Bottom right
+            indices.append([i,i + Config.NETWORK_SIZE + 1]);
+            values.append(1.0);
+    # --------------------------------------------------------
 
-    return (data,labels);
+    # Right edge vertices
+    elif i % (Config.NETWORK_SIZE - 1) == 0:
+        indices.append([i,i - 1]);
+        values.append(1.0);
+        if i - 1 > 0:
+            indices.append([i,i - Config.NETWORK_SIZE]);
+            values.append(1.0);
+            # Top left
+            indices.append([i,i - Config.NETWORK_SIZE - 1]);
+            values.append(1.0);
+        if i + 1 < Config.NETWORK_SIZE:
+            indices.append([i,i + Config.NETWORK_SIZE]);
+            values.append(1.0);
+            # Bottom left
+            indices.append([i,i + Config.NETWORK_SIZE - 1]);
+            values.append(1.0);
+    # --------------------------------------------------------
 
-def csvFeatureGenerator(inputPath,bs,numClasses,mode = "train"):
-    f = open(inputPath,"r");
-    while True:
-        data = [];
-        labels = [];
-        while len(data) < bs:
-            row = f.readline();
-            if row == "":
-                f.seek(0);
-                row = f.readline();
-                if mode == "eval":
-                    break;
-            row = row.strip().split(",");
-            label = row[0];
-            label = to_categorical(label,num_classes = numClasses);
-            features = np.array(row[1:],dtype="float");
+    # Top row vertices
+    elif 1 < i < Config.NETWORK_SIZE - 1:
+        indices.append([i,i - 1]);
+        values.append(1.0);
+        indices.append([i,i + 1]);
+        values.append(1.0);
+        indices.append([i,i + Config.NETWORK_SIZE + 1]);
+        values.append(1.0);
+        indices.append([i,i + Config.NETWORK_SIZE - 1]);
+        values.append(1.0);
+        indices.append([i,i + Config.NETWORK_SIZE]);
+        values.append(1.0);
+    # --------------------------------------------------------
 
-            data.append(features);
-            labels.append(label);
+    # Bottom row vertices
+    elif Config.NETWORK_SIZE * (Config.NETWORK_SIZE - 1) < i < Config.NETWORK_SIZE * Config.NETWORK_SIZE:
+        indices.append([i,i - 1]);
+        values.append(1.0);
+        indices.append([i,i + 1]);
+        values.append(1.0);
+        indices.append([i,i - Config.NETWORK_SIZE + 1]);
+        values.append(1.0);
+        indices.append([i,i - Config.NETWORK_SIZE - 1]);
+        values.append(1.0);
+        indices.append([i,i - Config.NETWORK_SIZE]);
+        values.append(1.0);
+    # ----------------------------------------------------------
 
-        yield (np.array(data),np.array(labels));
+    # Other vertices
+    else:
+        indices.append([i,i - 1]);
+        values.append(1.0);
+        indices.append([i,i + 1]);
+        values.append(1.0);
+        indices.append([i,i - Config.NETWORK_SIZE]);
+        values.append(1.0);
+        indices.append([i,i + Config.NETWORK_SIZE]);
+        values.append(1.0);
+
+        indices.append([i,i - Config.NETWORK_SIZE + 1]);
+        values.append(1.0);
+        indices.append([i,i - Config.NETWORK_SIZE - 1]);
+        values.append(1.0);
+        if i == (Config.NETWORK_SIZE * (Config.NETWORK_SIZE - 1) - 1):
+            indices.append([i,i + Config.NETWORK_SIZE]);
+            values.append(1.0);
+        else:
+            indices.append([i,i + Config.NETWORK_SIZE + 1]);
+            values.append(1.0);
+
+        indices.append([i,i + Config.NETWORK_SIZE - 1]);
+        values.append(1.0);
+
+# ------------------------------------------------------------------------------------------
+
+placeholders['graphNetwork'] = tf.SparseTensor(indices=indices,values=values,
+                dense_shape=(Config.NETWORK_SIZE * Config.NETWORK_SIZE,Config.NETWORK_SIZE * Config.NETWORK_SIZE));
+
+model = GCN(placeholders=placeholders);
+
+coords = pickle.load(file=open("surface.dat","rb"));
+feed_dict = dict();
+feed_dict.update({placeholders['features']: coords})
 
 
-le = pickle.loads(open(Config.LE_PATH,"rb").read());
-trainingPath = os.path.sep.join([Config.BASE_CSV_FILE,"{}.csv".format(Config.TRAIN)]);
-testingPath = os.path.sep.join([Config.BASE_CSV_FILE,"{}.csv".format(Config.TEST)]);
-evalPath = os.path.sep.join([Config.BASE_CSV_FILE,"{}.csv".format(Config.VAL)]);
+init = tf.global_variables_initializer();
+sess.run(init);
 
-totalTrain = sum([1 for l in open(trainingPath)]);
-totalVal = sum([1 for l in open(evalPath)]);
-testLabels = [int(row.split(",")[0]) for row in open(testingPath)]
-totalTest = len(testLabels)
+# Train model
+for epoch in range(Config.EPOCHS):
+    writer = tf.summary.FileWriter(logdir="./graphs",graph=sess.graph);
+    img = load_img(path = "1.PNG");
+    y_train = tf.random_normal(shape=(Config.NETWORK_SIZE * Config.NETWORK_SIZE, 1), dtype=tf.float32);
 
-print("[INFO]Generating train genrator...");
-trainGen = csvFeatureGenerator(trainingPath,Config.BATCH_SIZE,len(Config.CLASSES),mode = "train");
-print("[INFO]Generating test genrator...");
-testGen = csvFeatureGenerator(testingPath,Config.BATCH_SIZE,len(Config.CLASSES),mode = "test");
-print("[INFO]Generating evaluation genrator...");
-evalGen = csvFeatureGenerator(evalPath,Config.BATCH_SIZE,len(Config.CLASSES),mode = "eval");
+    feed_dict.update({placeholders['imageInput']: img})
+    feed_dict.update({placeholders['labels']: y_train})
 
-model = Sequential();
-model.add(Dense(256,input_shape=(56*56*256,),activation="relu"));
-model.add(Dense(16,activation="relu"));
-model.add(Dense(len(Config.CLASSES),activation="softmax"));
+    loss = sess.run(model.opt_op);
 
-opt = SGD(lr = 1e-3,momentum=0.9,decay=1e-3/25);
-print("[INFO]Compiling model...");
-model.compile(loss = "binary_crossentropy",optimizer=opt,metrics=["accuracy"]);
-print("[INFO]Training network...");
-H = model.fit_generator(trainGen,steps_per_epoch=totalTrain // Config.BATCH_SIZE,
-                        validation_data=evalGen,
-                        validation_steps=totalVal // Config.BATCH_SIZE,
-                        epochs=25);
-print("[INFO]Evaluation network...");
-predIdxs = model.predict_generator(testGen,
-	steps=(totalTest //Config.BATCH_SIZE) + 1)
-predIdxs = np.argmax(predIdxs,axis=1);
-print(classification_report(testLabels,predIdxs,target_names=le.classes_));
+    print("loss : {}".format(loss));
+
+# -----------------------------------------------------
