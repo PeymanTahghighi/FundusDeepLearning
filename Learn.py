@@ -1,4 +1,6 @@
 import tensorflow as tf
+import numpy as np
+import pickle
 # import numpy as np
 # import matplotlib.pyplot as plt
 #
@@ -251,9 +253,62 @@ import tensorflow as tf
 #     plt.show();
 #     #-------------------------------------------------------
 
-t1 = [[1, 2, 3]]
-t2 = [[7, 8, 9]]
-print(tf.concat([t1, t2], 0))  # [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
-print(tf.concat([t1, t2], 1))  # [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
+placeholders = {
+    'features': tf.placeholder(tf.float32, shape=(None, 2),name="vertexCoordinates"),
+}
 
+
+
+sess = tf.Session()
+x56 = tf.get_variable(initializer=tf.random_normal_initializer(),name="koft",shape=(56,56,10),dtype=tf.float32);
+x26 = tf.get_variable(initializer=tf.random_normal_initializer(),name="koft1",shape=(26,26,10),dtype=tf.float32);
+x7 = tf.get_variable(initializer=tf.random_normal_initializer(),name="koft2",shape=(7,7,10),dtype=tf.float32);
+
+
+coords = pickle.load(file=open("surface.dat","rb"));
+sess.run(tf.global_variables_initializer());
+coordstf=tf.convert_to_tensor(value=coords,dtype=tf.float32);
+coordstf56=tf.multiply(coordstf,tf.constant(value=(55.0/223.0),dtype=tf.float32));
+coordstf56floor = tf.floor(coordstf56);
+coordstf56ceil = tf.ceil(coordstf56);
+floorX = coordstf56floor[:,0];
+ceilX = coordstf56ceil[:,0];
+
+floorY = coordstf56floor[:,1];
+ceilY = coordstf56ceil[:,1];
+
+coordstf56fc = tf.stack([floorX,ceilY],axis=1);
+coordstf56cf = tf.stack([ceilX,floorY],axis=1);
+
+coordstf56floor = tf.cast(coordstf56floor,dtype=tf.int32);
+coordstf56ceil = tf.cast(coordstf56ceil,dtype=tf.int32);
+coordstf56cf = tf.cast(coordstf56cf,dtype=tf.int32);
+coordstf56fc = tf.cast(coordstf56fc,dtype=tf.int32);
+
+v1 = tf.gather_nd(x56, [coordstf56floor]);
+v2 = tf.gather_nd(x56, [coordstf56ceil]);
+v3 = tf.gather_nd(x56, [coordstf56cf]);
+v4 = tf.gather_nd(x56, [coordstf56fc]);
+
+final = tf.divide(tf.add_n([v1,v2,v3,v4]),y=tf.constant(value=4.0,dtype=tf.float32));
+final=tf.squeeze(final);
+
+
+print(sess.run(final))
+
+
+coordstf26=tf.multiply(coordstf,tf.constant(value=(25.0/223.0),dtype=tf.float32));
+coordstf7=tf.multiply(coordstf,tf.constant(value=(6.0/223.0),dtype=tf.float32));
+
+coordstf56 = tf.cast(coordstf56,dtype=tf.int32);
+coordstf26 = tf.cast(coordstf26,dtype=tf.int32);
+coordstf7 = tf.cast(coordstf7,dtype=tf.int32);
+# X = coordstf[:, 0]
+# Y = coordstf[:, 1]
+
+y1 = tf.gather_nd(x56, [coordstf56])
+y2 = tf.gather_nd(x26, [coordstf26])
+y3 = tf.gather_nd(x7, [coordstf7])
+final = tf.concat([y1,y2,y3],axis=2);
+print(sess.run(final))
 

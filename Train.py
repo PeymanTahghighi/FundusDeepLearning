@@ -4,9 +4,9 @@ import Config
 import pickle
 
 placeholders = {
-    'imageInput' : tf.placeholder(tf.float32, shape=(224, 224, 3)),
-    'labels': tf.placeholder(dtype=tf.float32, shape=(Config.NETWORK_SIZE * Config.NETWORK_SIZE, 1)),
-    'features': tf.placeholder(tf.float32, shape=(None, 2)),
+    'imageInput' : tf.placeholder(tf.float32, shape=(224, 224, 3),name="inputImage"),
+    'labels': tf.placeholder(dtype=tf.float32, shape=(Config.NETWORK_SIZE * Config.NETWORK_SIZE, 1),name="Grountruth"),
+    'features': tf.placeholder(tf.float32, shape=(None, 2),name="vertexCoordinates"),
 }
 
 sess = tf.Session();
@@ -128,12 +128,12 @@ sess.run(init);
 for epoch in range(Config.EPOCHS):
     writer = tf.summary.FileWriter(logdir="./graphs",graph=sess.graph);
     img = load_img(path = "1.PNG");
-    y_train = tf.random_normal(shape=(Config.NETWORK_SIZE * Config.NETWORK_SIZE, 1), dtype=tf.float32);
+    y_train = np.random.random_sample((Config.NETWORK_SIZE * Config.NETWORK_SIZE,1));
 
     feed_dict.update({placeholders['imageInput']: img})
     feed_dict.update({placeholders['labels']: y_train})
 
-    loss = sess.run(model.opt_op);
+    loss = sess.run(model.opt_op,feed_dict=feed_dict);
 
     print("loss : {}".format(loss));
 
