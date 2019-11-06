@@ -17,8 +17,6 @@ class Model(object):
         self.inputs = None
         self.model = [];
 
-
-
     def _build(self):
         raise NotImplementedError;
 
@@ -37,6 +35,8 @@ class Model(object):
         if not sess:
             raise AttributeError("Session not provided");
 
+        #saver = tf.train.Saver()
+
         saver = tf.train.Saver(self.vars);
         savePath = os.path.sep.join([Config.BASE_MODEL_PATH, self.name, ".mdl"]);
         saver.save(sess, save_path=savePath);
@@ -53,25 +53,29 @@ class GCN(Model):
         self.build();
         self.graphNetwork = placeholders['graphNetwork'];
 
-
-
-
-
     def _build(self):
         self.buildImageNetwork();
-
         self.layers.append(GraphProjection(placeholders=self.placeholders));
         self.layers.append(GraphConvolution(input_dim=Config.IMAGE_FEATURE_DIM,
                                             output_dim=Config.FEATURES_HIDDEN,
                            placeholders = self.placeholders));
+        for _ in range(12):
+            self.layers.append(GraphConvolution(input_dim=Config.FEATURES_HIDDEN,
+                                                output_dim=Config.FEATURES_HIDDEN,
+                                                placeholders=self.placeholders));
         self.layers.append(GraphConvolution(input_dim=Config.FEATURES_HIDDEN,output_dim=1,
                                             placeholders=self.placeholders));
 
 
+
+
     def _loss(self):
+        eltwise = [3, 5, 7,9,11]
         self.activations.append(self.inputs)
         for idx, layer in enumerate(self.layers):
             hidden = layer(self.activations[-1])
+            if idx in eltwise:
+                hidden = tf.add(hidden, self.activations[-2]) * 0.5
             self.activations.append(hidden);
 
         out = self.activations[-1];
@@ -110,8 +114,8 @@ class GCN(Model):
         x = tf.layers.max_pooling2d(x,pool_size=(2,2),strides=(2,2));
         # 7 7
 
-        self.placeholders.update({'img_feat': [tf.squeeze(x2), tf.squeeze(x3), tf.squeeze(x4)]})
-        print(self.placeholders['img_feat']);
+        self.placeholders.update({'img_feat': [tf.squeeze(x0), tf.squeeze(x1), tf.squeeze(x2)]})
+        #print(self.placeholders['img_feat']);
 
 
 

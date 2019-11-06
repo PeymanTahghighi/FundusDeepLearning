@@ -2,15 +2,17 @@ from Models import *
 import tensorflow as tf
 import Config
 import pickle
+import Fetcher
 
 placeholders = {
-    'imageInput' : tf.placeholder(tf.float32, shape=(224, 224, 3),name="inputImage"),
+    'imageInput' : tf.placeholder(tf.float32, shape=(100, 100, 3),name="inputImage"),
     'labels': tf.placeholder(dtype=tf.float32, shape=(Config.NETWORK_SIZE * Config.NETWORK_SIZE, 1),name="Grountruth"),
     'features': tf.placeholder(tf.float32, shape=(None, 2),name="vertexCoordinates"),
 }
 
 sess = tf.Session();
 sess.run(tf.global_variables_initializer());
+
 
 # Build graph adjacency matrix
 indices = [];
@@ -116,25 +118,36 @@ placeholders['graphNetwork'] = tf.SparseTensor(indices=indices,values=values,
 
 model = GCN(placeholders=placeholders);
 
+#Utils.createCoords();
 coords = pickle.load(file=open("surface.dat","rb"));
 feed_dict = dict();
 feed_dict.update({placeholders['features']: coords})
 
+data = Fetcher.DataFetcher("Dataset\heightmap","Dataset\image");
+data.load();
 
 init = tf.global_variables_initializer();
 sess.run(init);
+writer = tf.summary.FileWriter(logdir="./graphs",graph=sess.graph);
 
 # Train model
 for epoch in range(Config.EPOCHS):
-    writer = tf.summary.FileWriter(logdir="./graphs",graph=sess.graph);
-    img = load_img(path = "1.PNG");
-    y_train = np.random.random_sample((Config.NETWORK_SIZE * Config.NETWORK_SIZE,1));
+    print("[INFO]Begin epoch {}...".format(epoch));
+    all_loss = np.zeros(data.getTrainDataSize(),dtype='float32');
+    for iter in range(data.getTrainDataSize()):
 
-    feed_dict.update({placeholders['imageInput']: img})
-    feed_dict.update({placeholders['labels']: y_train})
+        img, y_train = data.fetchTrain(batchSize=1);
+        # img = load_img(path = "1.PNG");
+        # y_train = np.random.random_sample((Config.NETWORK_SIZE * Config.NETWORK_SIZE,1));
 
-    loss = sess.run(model.opt_op,feed_dict=feed_dict);
+        feed_dict.update({placeholders['imageInput']: img})
+        feed_dict.update({placeholders['labels']: y_train})
 
-    print("loss : {}".format(loss));
+        _,loss = sess.run([model.opt_op,model.loss],feed_dict=feed_dict);
+        all_loss[iter] = loss;
+        mean_loss = np.mean(all_loss[np.where(all_loss)])
+        if (iter + 1) % 128 == 0:
+            print('Epoch %d, Iteration %d' % (epoch + 1, iter + 1));
+            print('Mean loss = %f, iter loss = %f' % (mean_loss, loss));
 
 # -----------------------------------------------------
