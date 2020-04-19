@@ -1,5 +1,5 @@
 import os
-ORIG_INPUT_DATASET = "Food-5K";
+import tensorflow as tf
 BASE_PATH = "dataset";
 TRAIN = "training";
 VAL = "validation"
@@ -10,12 +10,19 @@ BASE_MODEL_PATH = "Models"
 
 MAX_WIDTH = 224;
 MAX_HEIGHT = 224;
-NETWORK_SIZE =100;
+BATCH_SIZE = 12;
 
-IMAGE_FEATURE_DIM = 448;
-FEATURES_HIDDEN = 400;
+NETWORK_SIZE = 128;
 
-LEARNING_RATE = 0.6;
-EPOCHS = 20;
+IMAGE_FEATURE_DIM = 1280;
+FEATURES_HIDDEN = 500;
+IMG_WIDTH = 128;
+IMG_HEIGHT = 128;
+
+LEARNING_RATE = 1e-1;
+EPOCHS = 25;
+DROPOUT_RATIO = 0.25;
+IS_TRAINING = tf.placeholder(tf.bool);
+IS_TRAININGDO = tf.placeholder(tf.bool);
 
 
