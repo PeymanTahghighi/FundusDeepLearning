@@ -8,9 +8,9 @@ TEST = "evaluation";
 BASE_FEATURE_OUTPUT = "Features";
 BASE_MODEL_PATH = "Models"
 
-MAX_WIDTH = 224;
+MAX_WIDTH = 42;
 MAX_HEIGHT = 224;
-BATCH_SIZE = 12;
+BATCH_SIZE = 8;
 
 NETWORK_SIZE = 128;
 
@@ -19,10 +19,8 @@ FEATURES_HIDDEN = 500;
 IMG_WIDTH = 128;
 IMG_HEIGHT = 128;
 
-LEARNING_RATE = 1e-1;
-EPOCHS = 25;
-DROPOUT_RATIO = 0.25;
-IS_TRAINING = tf.placeholder(tf.bool);
-IS_TRAININGDO = tf.placeholder(tf.bool);
+LEARNING_RATE = 1e-3;
+EPOCHS = 501;
+DROPOUT_RATIO = 0.50;
 
 
