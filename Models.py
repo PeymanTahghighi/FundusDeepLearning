@@ -310,7 +310,7 @@ class FundusNet():
         accuracy = tf.divide(tf.math.count_nonzero(thresh),
                              Config.IMG_WIDTH * Config.IMG_HEIGHT * batch_size);
 
-        loss = 1.0*(l1_loss);
+        loss = 100.0*(l1_loss) + gan_loss + 10.0*preceptualLoss;
 
         return loss, l1_loss, gan_loss, accuracy
 
