@@ -4,195 +4,229 @@ from keras.preprocessing.image import load_img, img_to_array
 import Config
 import cv2
 from keras.applications import imagenet_utils
+from tqdm.autonotebook import tqdm
+import pickle
+import tensorflow as tf
+import glob
+from sklearn.utils import shuffle
 
 class DataFetcher(object):
     def __init__(self, heightmapPath, imagePath):
 
         self.heightMapBasePath = heightmapPath;
         self.imageBasePath = imagePath;
-        self.trainImage = [];
+
+        self.allFundus = [];
+        self.allHeightmap=[];
+
+        self.trainFundus = [];
         self.trainHeight = [];
-        self.testImage = [];
+
+        self.testFundus = [];
         self.testHeight = [];
-        self.validImage = [];
+
+        self.validFundus = [];
         self.validHeight = [];
+        
         self.loaded = False;
+
         self.trainIdx = 0;
         self.testIdx = 0;
         self.validIdx = 0;
+        self.dataIdx = 0;
+
         self.trainDataSize = 0;
         self.testDataSize = 0;
         self.validDataSize = 0;
         self.totalDataSize = 0;
 
     def load(self):
-        # load all files
 
         imagefiles = os.listdir(self.imageBasePath);
         heightmapFiles = os.listdir(self.heightMapBasePath);
         numFiles = len(imagefiles);
-        self.totalDataSize = numFiles;
         idx = np.arange(0, numFiles);
         np.random.seed(1);
         np.random.shuffle(idx);
-
-        i = 0;
-        self.trainDataSize = int(np.ceil(numFiles * 0.9));
-        #self.trainDataSize = 100;
-        #self.validDataSize= 50;
-        #self.testDataSize =  int(np.ceil((numFiles - self.trainDataSize)));
-        self.validDataSize = int(np.ceil((numFiles - self.trainDataSize) * 0.5));
+        
         meanImage = load_img(path="meanImage.png");
         meanImage = img_to_array(meanImage);
-        while i < self.trainDataSize:
+        fileCounter = 0;
+
+        for i in tqdm(range(numFiles)):
+
             # Load image
             imgPath = os.path.sep.join([self.imageBasePath, imagefiles[idx[i]]]);
-            img = cv2.imread(imgPath,cv2.IMREAD_COLOR);
-            #img = img-meanImage;
-            img = img / 255.0;
-            self.trainImage.append(img);
+            fundus = cv2.imread(imgPath,cv2.IMREAD_COLOR);
+            clahe = cv2.createCLAHE(clipLimit=2.0,tileGridSize=(8,8));
+            lab = cv2.cvtColor(fundus, cv2.COLOR_BGR2LAB)
+            lab_planes = cv2.split(lab)
+            lab_planes[0] = clahe.apply(lab_planes[0])
+
+            fundus = cv2.merge(lab_planes)
+
+            fundus = cv2.cvtColor(fundus, cv2.COLOR_LAB2BGR)
+            fundus = fundus / 255.0;
 
             # ----------------------------------------------
 
             # Load heightmap
             heightmapPath = os.path.sep.join([self.heightMapBasePath, heightmapFiles[idx[i]]]);
-            # heightmap = open(heightmapPath, "r", encoding="utf-8");
-            # heightMapMat = np.zeros((Config.NETWORK_SIZE * Config.NETWORK_SIZE), np.float);
-            # lines = heightmap.readlines();
-            # for k in range(Config.NETWORK_SIZE * Config.NETWORK_SIZE):
-            #     heightMapMat[k] = int(lines[k]);
-            #     #heightMapMat[k] /= 255.0;
-            #
-            # #heightMapMat -= heightMapMat.min();
-            img = cv2.imread(heightmapPath, cv2.IMREAD_COLOR);
-            #img = np.expand_dims(img, axis=2);
-            # img = img-meanImage;
-            img = img / 255.0;
-
-            self.trainHeight.append(img);
-            # self.trainHeight.append(float(lines[0]));
-            # ----------------------------------------------
-            i += 1;
-        #Load our validation data
-        while i <= self.trainDataSize + self.validDataSize:
-            # Load image
-            imgPath = os.path.sep.join([self.imageBasePath, imagefiles[idx[i]]]);
-            img = cv2.imread(imgPath,cv2.IMREAD_COLOR);
-            #img = img - meanImage;
-            img = img / 255.0;
-            self.validImage.append(img);
+            heightmap = cv2.imread(heightmapPath, cv2.IMREAD_COLOR);
+            heightmap = heightmap / 255.0;
             # ----------------------------------------------
 
-            # Load heightmap
-            heightmapPath = os.path.sep.join([self.heightMapBasePath, heightmapFiles[idx[i]]]);
-            # heightmap = open(heightmapPath, "r", encoding="utf-8");
-            # heightMapMat = np.zeros((Config.NETWORK_SIZE * Config.NETWORK_SIZE), np.float);
-            # lines = heightmap.readlines();
-            # for k in range(Config.NETWORK_SIZE * Config.NETWORK_SIZE):
-            #     heightMapMat[k] = int(lines[k]);
-            #     #heightMapMat[k] /= 255.0;
+            self.allFundus.append(fundus);
+            self.allHeightmap.append(heightmap);
+        
+        augmented = [];
+        for i in range(len(self.allFundus)):
+            for j in range(-1,3,1):
+                augmented.append([i,j]);
 
-            img = cv2.imread(heightmapPath, cv2.IMREAD_COLOR);
-            #img = np.expand_dims(img, axis=2);
-            # img = img-meanImage;
-            img = img / 255.0;
+        self.totalDataSize = len(self.allFundus);
 
-           # heightMapMat -= heightMapMat.min();
-            self.validHeight.append(img);
-            # self.testHeight.append(float(lines[0]));
-            # ----------------------------------------------
-            i += 1;
+        augmented = shuffle(augmented,random_state=0);
 
-        # Load our Test data
-        while i < 0:
-            # Load image
-            imgPath = os.path.sep.join([self.imageBasePath, imagefiles[idx[i]]]);
-            img = load_img(path=imgPath);
-            img = img_to_array(img);
-           # img = img - meanImage;
-            img = img / 255.0;
-            self.testImage.append(img);
-            # ----------------------------------------------
+        self.trainFundus = augmented[:int(np.ceil(len(augmented)*0.8))];
+        self.trainHeight = augmented[:int(np.ceil(len(augmented)*0.8))];
+        self.trainDataSize = len(self.trainFundus);
 
-            # Load heightmap
-            heightmapPath = os.path.sep.join([self.heightMapBasePath, heightmapFiles[idx[i]]]);
-            # heightmap = open(heightmapPath, "r", encoding="utf-8");
-            # heightMapMat = np.zeros((Config.NETWORK_SIZE * Config.NETWORK_SIZE), np.float);
-            # lines = heightmap.readlines();
-            # for k in range(Config.NETWORK_SIZE * Config.NETWORK_SIZE):
-            #     heightMapMat[k] = float(lines[k]);
-            #     #heightMapMat[k] /= 255.0;
-            #
-            # #heightMapMat -= heightMapMat.min();
+        self.validFundus = augmented[int(np.ceil(len(augmented)*0.8)):self.trainDataSize + int(np.ceil((len(augmented) - self.trainDataSize)*0.5))];
+        self.validHeight = augmented[int(np.ceil(len(augmented)*0.8)):self.trainDataSize + int(np.ceil((len(augmented) - self.trainDataSize)*0.5))];
+        self.validDataSize = len(self.validFundus);
 
-            img = load_img(path=heightmapPath);
-            img = img_to_array(img);
-            # img = img-meanImage;
-            img = img / 255.0;
-            self.testHeight.append(img);
-            # self.testHeight.append(float(lines[0]));
-            # ----------------------------------------------
-            i += 1;
+        self.testFundus = augmented[self.trainDataSize + int(np.ceil((len(augmented) - self.trainDataSize)*0.5)):];
+        self.testHeight = augmented[self.trainDataSize + int(np.ceil((len(augmented) - self.trainDataSize)*0.5)):];
+
+        self.testDataSize = len(self.testFundus);
+        
         self.loaded = True;
 
     def fetchTrain(self, batchSize):
         assert self.loaded is True, "Data hasn't loaded yet...";
         if(self.trainDataSize - self.trainIdx < batchSize):
             size = self.trainDataSize - self.trainIdx;
+            replicate = batchSize - size;
         else:
             size = batchSize;
-        retImg = np.zeros(shape=(size, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
-        retheight = np.zeros(shape=(size, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
+
+        retImg = np.zeros(shape=(batchSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
+        retHeight = np.zeros(shape=(batchSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
 
         for i in range(size):
-            # tmp = np.zeros((Config.NETWORK_SIZE * Config.NETWORK_SIZE), dtype=np.float);
-            #
-            # tmp = self.trainHeight[i];
-            # tmp = np.squeeze(tmp);
-            retheight[i] = self.trainHeight[self.trainIdx];
-
-            retImg[i] = self.trainImage[self.trainIdx];
+            f = self.allFundus[self.trainFundus[self.trainIdx][0]];
+            code = self.trainFundus[self.trainIdx][1];
+            h = self.allHeightmap[self.trainHeight[self.trainIdx][0]];
+            if code == 2:
+                retImg[i] = f;
+                retHeight[i] = h;
+            else:
+                retImg[i] = cv2.flip(f,code);
+                retHeight[i] = cv2.flip(h,code);
+            
             self.trainIdx += 1;
 
         if self.trainIdx == self.trainDataSize:
             self.trainIdx = 0;
-        return retImg, retheight,size;
+        return retImg, retHeight,size;
 
 
     def fetchTest(self,batchSize):
         assert self.loaded is True, "Data hasn't loaded yet...";
-        retImg = np.zeros(shape=(self.testDataSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 1), dtype=np.float32);
-        retheight = np.zeros(shape=(self.testDataSize, Config.NETWORK_SIZE * Config.NETWORK_SIZE), dtype=np.float32);
+        if(self.testDataSize - self.testIdx < batchSize):
+            size = self.testDataSize - self.testIdx;
+            replicate = Config.BATCH_SIZE - size;
+        else:
+            size = batchSize;
 
-        for i in range(self.testDataSize):
-            # if self.testIdx == self.testDataSize:
-            #     self.testIdx = 0;
-            #     break;
-            retheight[i] = self.testHeight[i];
+        retImg = np.zeros(shape=(batchSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
+        retHeight = np.zeros(shape=(batchSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
 
-            retImg[i] = self.testImage[i];
-            #self.testIdx += 1;
-        return retImg, retheight;
+        for i in range(size):
+            f = self.allFundus[self.testFundus[self.testIdx][0]];
+            code = self.testFundus[self.testIdx][1];
+            h = self.allHeightmap[self.testHeight[self.testIdx][0]];
+            if code == 2:
+                retImg[i] = f;
+                retHeight[i] = h;
+            else:
+                retImg[i] = cv2.flip(f,code);
+                retHeight[i] = cv2.flip(h,code);
+            
+            self.testIdx += 1;
+
+        if self.testIdx == self.testDataSize:
+            self.testIdx = 0;
+        return retImg, retHeight,size;
+
+    def fetchRandomTest(self,batchSize):
+        assert self.loaded is True, "Data hasn't loaded yet...";
+        
+        retImg = np.zeros(shape=(batchSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
+        retHeight = np.zeros(shape=(batchSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
+
+        for i in range(batchSize):
+            r = np.random.randint(0,self.testDataSize);
+            f = self.allFundus[self.testFundus[r][0]];
+            code = self.testFundus[r][1];
+            h = self.allHeightmap[self.testHeight[r][0]];
+            if code == 2:
+                retImg[i] = f;
+                retHeight[i] = h;
+            else:
+                retImg[i] = cv2.flip(f,code);
+                retHeight[i] = cv2.flip(h,code);
+        
+        return retImg, retHeight;
+
+    def fetchRandomValid(self,batchSize):
+        assert self.loaded is True, "Data hasn't loaded yet...";
+        
+        retImg = np.zeros(shape=(batchSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
+        retHeight = np.zeros(shape=(batchSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
+
+        for i in range(batchSize):
+            r = np.random.randint(0,self.validDataSize);
+            f = self.allFundus[self.validFundus[r][0]];
+            code = self.validFundus[r][1];
+            h = self.allHeightmap[self.validHeight[r][0]];
+            if code == 2:
+                retImg[i] = f;
+                retHeight[i] = h;
+            else:
+                retImg[i] = cv2.flip(f,code);
+                retHeight[i] = cv2.flip(h,code);
+        
+        return retImg, retHeight;
 
     def fetchValid(self, batchSize):
         assert self.loaded is True, "Data hasn't loaded yet...";
-        if (self.validDataSize - self.validIdx < batchSize):
+        if(self.validDataSize - self.validIdx < batchSize):
             size = self.validDataSize - self.validIdx;
+            replicate = Config.BATCH_SIZE - size;
         else:
             size = batchSize;
-        retImg = np.zeros(shape=(size, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
-        retheight = np.zeros(shape=(size, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3
-                                    ), dtype=np.float32);
+
+        retImg = np.zeros(shape=(batchSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
+        retHeight = np.zeros(shape=(batchSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
 
         for i in range(size):
-            retheight[i] = self.validHeight[self.validIdx];
-
-            retImg[i] = self.validImage[self.validIdx];
+            f = self.allFundus[self.validFundus[self.validIdx][0]];
+            code = self.validFundus[self.validIdx][1];
+            h = self.allHeightmap[self.validHeight[self.validIdx][0]];
+            if code == 2:
+                retImg[i] = f;
+                retHeight[i] = h;
+            else:
+                retImg[i] = cv2.flip(f,code);
+                retHeight[i] = cv2.flip(h,code);
+            
             self.validIdx += 1;
 
         if self.validIdx == self.validDataSize:
             self.validIdx = 0;
-        return retImg, retheight,size;
+        return retImg, retHeight,size;
 
     def getTrainDataSize(self):
         return self.trainDataSize;
@@ -202,7 +236,33 @@ class DataFetcher(object):
         return self.testDataSize;
 
     def getTotalDataSize(self):
-        return self.totalDataSize;
+        return len(self.allFundus);
+
+    ''' 
+        Fetch all data in sequential order
+    '''
+    def fetchData(self,batchSize):
+        assert self.loaded is True, "Data hasn't loaded yet...";
+        if(self.totalDataSize - self.dataIdx < batchSize):
+            size = self.totalDataSize - self.dataIdx;
+            replicate = batchSize - size;
+        else:
+            size = batchSize;
+
+        retImg = np.zeros(shape=(batchSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
+        retHeight = np.zeros(shape=(batchSize, Config.IMG_WIDTH, Config.IMG_HEIGHT, 3), dtype=np.float32);
+
+        for i in range(size):
+            f = self.allFundus[self.dataIdx];
+            h = self.allHeightmap[self.dataIdx];
+            retImg[i] = f;
+            retHeight[i] = h;
+            
+            self.dataIdx += 1;
+
+        if self.dataIdx == len(self.allFundus):
+            self.dataIdx = 0;
+        return retImg, retHeight,size;
 
 
     def getRandomValidation(self):
